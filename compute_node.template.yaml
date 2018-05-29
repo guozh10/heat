@@ -1,0 +1,184 @@
+## Author: Jeffrey Guan
+## Name: compute_node.template.yaml
+## Date: 2016-08-15
+## Note: create compute resources.
+## Version: Kilo
+
+heat_template_version: '2015-04-30'
+
+description: Compute server
+
+parameters:
+  name:
+    type: string
+    default: "cpu_volume"
+  image:
+    type: string
+    default: "cirrors"
+  flavor:
+    type: string
+    default: m1.small
+  volumeSize:
+    type: string
+    description: size of the cinder volume used for database
+    default: 10
+  private_network:
+    type: json
+    description: 
+  indx:
+    type: string 
+    description: 
+  default_gw_br-mgmt:
+    type: string 
+    description: 
+  ceph_fixed_ip:
+    type: string 
+    description: 
+  security_group:
+    type: json
+  cpu_count:
+    type: number
+  fixed_ip_br_mgmt:
+    type: string 
+    description: " used by br-mgmt to limit the ips can only start
+                  with 192.168.121.10. Please be aware of the
+                  following ips are in use:
+                  192.168.121.1 is for dhcp server;
+                  192.168.121.2 is for b_management in haproxy;
+                  192.168.121.3 is for controller."
+  fixed_ip_br_mesh:
+    type: string 
+    description: "This is used to setup the local_ip for ovs on compute
+                  node. We can check if it is setup successfully with the 
+                  command 'ovs-vsctl show'. Or direct go to check the file
+                  /etc/neutron/plugins/ml2/ml2_conf.ini."
+    
+resources:
+
+## start of compute node definitions
+
+  ################################################################
+  #	            Begin: Create Port                           #
+  ################################################################
+
+  # Creat a new port.
+  ETH0-br-fw-admin:
+    type: OS::Neutron::Port
+    properties:
+      name: 
+        str_replace: 
+          template: $INDX-eth0
+          params: 
+            $INDX: { get_param: indx }
+
+      network: { get_param: [private_network, br-fw-admin, network] }
+      security_groups: 
+        - { get_param: [security_group, sec_group] }
+      
+  # Creat a new port.
+  ETH1-br-storage:
+    type: OS::Neutron::Port
+    properties:
+      name: 
+        str_replace: 
+          template: $INDX-eth1
+          params: 
+            $INDX: { get_param: indx }
+      network: { get_param: [private_network, br-storage, network] }
+      security_groups: 
+        - { get_param: [security_group, sec_group] }
+
+  # Creat a new port.
+  ETH2-br-mgmt:
+    type: OS::Neutron::Port
+    properties:
+      name: 
+        str_replace: 
+          template: $INDX-eth2
+          params: 
+            $INDX: { get_param: indx }
+
+      network: { get_param: [private_network, br-mgmt, network] }
+      security_groups: 
+        - { get_param: [security_group, sec_group] }
+
+      fixed_ips:
+        - ip_address: { get_param: fixed_ip_br_mgmt }
+
+  # Creat a new port.
+  ETH3-br-mesh:
+    type: OS::Neutron::Port
+    properties:
+      name:
+        str_replace: 
+          template: $INDX-eth3
+          params: 
+            $INDX: { get_param: indx }
+        
+      network: { get_param: [private_network, br-mesh, network] }
+      security_groups: 
+        - { get_param: [security_group, sec_group] }
+
+      fixed_ips:
+        - ip_address: { get_param: fixed_ip_br_mesh }
+
+  ################################################################
+  #	         End: Create Port                                #
+  ################################################################
+
+  # Create compute node.
+  cpu_node:
+    type: OS::Nova::Server
+#    depends_on: cpuVolume
+    properties:
+      name:
+        str_replace:
+          template: $SERVER_NAME
+          params:
+            $SERVER_NAME: { get_param: name }
+
+      flavor: { get_param: flavor }
+      config_drive: True
+      image: { get_param: image }
+
+      user_data_format: RAW
+      user_data: 
+        str_replace:
+          template: { get_file: userdata_compute_node.sh }
+          params: 
+            $NAME: { get_param: indx }
+            $DEFAULT_GW_BR_MGMT: { get_param: default_gw_br-mgmt }
+            $CEPH_FIXED_IP: { get_param: ceph_fixed_ip }
+            $CPU_COUNT: { get_param: cpu_count }
+            $FIXED_IP_BR_MGMT: { get_param: fixed_ip_br_mgmt }
+            $FIXED_IP_BR_MESH: { get_param: fixed_ip_br_mesh }
+
+      networks:
+        - port: { get_resource: ETH0-br-fw-admin }
+        - port: { get_resource: ETH1-br-storage }
+        - port: { get_resource: ETH2-br-mgmt }
+        - port: { get_resource: ETH3-br-mesh }
+
+#      block_device_mapping:
+#        - { volume_id: { get_resource: cpuVolume }, device_name: vdb, delete_on_termination: 'true' } 
+
+        
+  # Create volume for compute node.
+#  cpuVolume:
+#    type: OS::Cinder::Volume
+#    properties:
+#      name:
+#        str_replace:
+#          template: $name:vdb
+#          params:
+#            $name: { get_param: name }
+#      size: { get_param: volumeSize }
+  #cpuVolumeAttach:
+  #  type: OS::Cinder::VolumeAttachment
+  #  properties:
+  #    instance_uuid: { get_resource: cpu_node }
+  #    volume_id: { get_resource: cpuVolume }
+  #    mountpoint: /dev/vdc
+## end of node compute node definitions
+
+

@@ -1,0 +1,110 @@
+## Author: Jeffrey Guan
+## Name: ceph_node.template.yaml
+## Date: 2016-08-15
+## Note: create ceph resources.
+## Version: Kilo
+
+heat_template_version: '2015-04-30'
+
+description: Ceph server
+
+parameters:
+  name:
+    type: string
+    default: "ceph"
+  image:
+    type: string
+    default: "ceph"
+  flavor:
+    type: string
+    default: m1.small
+  volumeSize:
+    type: string
+    description: size of the cinder volume used for database
+    default: 10
+  private_network:
+    type: json
+    description: 
+  indx:
+    type: string 
+    description: 
+  security_group:
+    type: json
+  ceph_fixed_ip:
+    type: string 
+    description: 
+    
+resources:
+
+## start of ceph node definitions
+
+  ################################################################
+  #	            Begin: Create Port                           #
+  ################################################################
+
+  # Creat a new port.
+  ETH0-br-fw-admin:
+    type: OS::Neutron::Port
+    properties:
+      name:
+        str_replace:
+          template: $INDX
+          params:
+            $INDX: { get_param: indx }
+      network: { get_param: [private_network, br-fw-admin, network] }
+      security_groups: 
+        - { get_param: [security_group, sec_group] }
+      fixed_ips:
+        - ip_address: { get_param: ceph_fixed_ip }
+
+  ################################################################
+  #	         End: Create Port                                #
+  ################################################################
+
+  # Create ceph node.
+  ceph_node:
+    type: OS::Nova::Server
+#    depends_on: cpuVolume
+    properties:
+      name:
+        str_replace:
+          template: $SERVER_NAME
+          params:
+            $SERVER_NAME: { get_param: name }
+
+      flavor: { get_param: flavor }
+      config_drive: True
+      image: { get_param: image }
+
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: { get_file: userdata_ceph_node.sh }
+          params: 
+            $node_countA: { get_param: indx }
+
+      networks:
+        - port: { get_resource: ETH0-br-fw-admin }
+
+#      block_device_mapping:
+#        - { volume_id: { get_resource: cpuVolume }, device_name: vdb, delete_on_termination: 'true' } 
+        
+  # Create volume for compute node.
+#  cpuVolume:
+#    type: OS::Cinder::Volume
+#    properties:
+#      name:
+#        str_replace:
+#          template: $name:vdb
+#          params:
+#            $name: { get_param: name }
+#      size: { get_param: volumeSize }
+  #cpuVolumeAttach:
+  #  type: OS::Cinder::VolumeAttachment
+  #  properties:
+  #    instance_uuid: { get_resource: cpu_node }
+  #    volume_id: { get_resource: cpuVolume }
+  #    mountpoint: /dev/vdc
+## end of node compute node definitions
+
+
